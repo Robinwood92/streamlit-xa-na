@@ -60,7 +60,6 @@ if output and output.get("last_active_drawing"):
                 selected_gdf.groupby("Diem")["Xa"]
                 .apply(lambda x: ", ".join(sorted(set(x))))
                 .reset_index()
-                .rename(columns={"Diem": "Xa"})
             )
 
             # Ghi ra file Excel
