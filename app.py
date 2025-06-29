@@ -51,14 +51,13 @@ if output and output.get("last_active_drawing"):
 
             # Hiển thị nhóm xã theo huyện
             st.markdown("## 🗂️ Danh sách xã theo huyện")
-            grouped = selected_gdf.groupby("Huyen")["Diem"].unique()
+            grouped = selected_gdf.groupby("Diem")["Xa"].unique()
             for huyen, xa_list in grouped.items():
-                st.markdown(f"**📍 Huyện: {huyen}**")
-                st.write(", ".join(sorted(xa_list)))
+                st.write(huyen + ": "+", ".join(sorted(xa_list)))
 
             # Chuẩn bị dữ liệu Excel
             grouped_df = (
-                selected_gdf.groupby("Huyen")["Diem"]
+                selected_gdf.groupby("Diem")["Xa"]
                 .apply(lambda x: ", ".join(sorted(set(x))))
                 .reset_index()
                 .rename(columns={"Diem": "Xa"})
