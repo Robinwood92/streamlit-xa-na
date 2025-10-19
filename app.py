@@ -3,81 +3,132 @@ import geopandas as gpd
 import folium
 from folium.plugins import Draw
 from shapely.geometry import shape
+from shapely.ops import unary_union
 from streamlit_folium import st_folium
 import pandas as pd
 from io import BytesIO
+from openpyxl import load_workbook
 
-# Tải shapefile vào cache
+# =====================
+# ⚙️ Tải shapefile Nghệ An
+# =====================
 @st.cache_data
 def load_shapefile():
     gdf = gpd.read_file("Xa_NA_chuan.shp")
     return gdf.to_crs(epsg=4326)
+
 gdf = load_shapefile()
 
-# Giao diện
+# =====================
+# 🧭 Giao diện
+# =====================
 st.set_page_config(layout="wide")
-st.title("🗺️ Chọn vùng để liệt kê danh sách xã (Nghệ An)")
+st.title("🗺️ Chọn nhiều vùng để liệt kê các xã trong vùng")
 
-# Tạo bản đồ
+# =====================
+# 🗺️ Bản đồ nền
+# =====================
 center = [19.23, 104.8]
 m = folium.Map(location=center, zoom_start=9, tiles="OpenStreetMap")
 
-# Lớp các xã có thể bật/tắt
-xa_layer = folium.FeatureGroup(name="📍 Lớp các xã", show=True)
-folium.GeoJson(gdf, name="Các xã").add_to(xa_layer)
-xa_layer.add_to(m)
+folium.GeoJson(
+    gdf,
+    name="📍 Các xã Nghệ An",
+    style_function=lambda x: {"color": "gray", "weight": 1, "fillOpacity": 0.1},
+    tooltip=folium.GeoJsonTooltip(fields=["Xa", "Diem"], aliases=["Xã:", "Huyện:"]),
+).add_to(m)
 
-# Công cụ vẽ
-Draw(export=True).add_to(m)
+Draw(
+    export=False,
+    draw_options={
+        "polygon": {"allowIntersection": False, "showArea": True, "repeatMode": True},
+        "rectangle": False,
+        "circle": False,
+        "circlemarker": False,
+        "polyline": False,
+        "marker": False,
+    },
+    edit_options={"edit": True, "remove": True},
+).add_to(m)
 
-# Điều khiển layer
 folium.LayerControl(collapsed=False).add_to(m)
 
-# Hiển thị bản đồ tương tác
-st.markdown("### 👉 Hãy vẽ một vùng trên bản đồ:")
-output = st_folium(m, height=550, width=950, returned_objects=["last_active_drawing"])
+st.markdown("### ✏️ Hướng dẫn:")
+st.markdown("""
+- Dùng công cụ **Polygon** để vẽ vùng (double-click để kết thúc).  
+- Có thể vẽ **nhiều vùng**.  
+- Khi hoàn tất, nhấn **[Lấy xã]** để liệt kê các xã trong tất cả vùng đã vẽ.
+""")
 
-# Xử lý polygon
-if output and output.get("last_active_drawing"):
-    try:
-        # Đọc polygon shapely
-        polygon_geom = shape(output["last_active_drawing"]["geometry"])
+# =====================
+# 📍 Hiển thị bản đồ
+# =====================
+map_data = st_folium(m, height=600, width=950, returned_objects=["all_drawings"])
 
-        # Lọc các xã giao cắt vùng vẽ
-        selected_gdf = gdf[gdf.intersects(polygon_geom)]
+# =====================
+# 💾 Lưu các polygon
+# =====================
+if "all_polygons" not in st.session_state:
+    st.session_state.all_polygons = []
 
-        if not selected_gdf.empty:
-            st.success(f"✅ Tìm thấy {len(selected_gdf)} xã nằm trong vùng được vẽ.")
+if map_data and "all_drawings" in map_data and map_data["all_drawings"]:
+    st.session_state.all_polygons = [
+        shape(feature["geometry"]) for feature in map_data["all_drawings"]
+        if feature.get("geometry") is not None
+    ]
 
-            # Hiển thị nhóm xã theo huyện
-            st.markdown("## 🗂️ Danh sách xã theo huyện")
-            grouped = selected_gdf.groupby("Diem")["Xa"].unique()
-            for huyen, xa_list in grouped.items():
-                st.write(huyen + ": "+", ".join(sorted(xa_list)))
+st.info(f"📍 Hiện có **{len(st.session_state.all_polygons)}** vùng được vẽ.")
 
-            # Chuẩn bị dữ liệu Excel
-            grouped_df = (
-                selected_gdf.groupby("Diem")["Xa"]
-                .apply(lambda x: ", ".join(sorted(set(x))))
-                .reset_index()
-            )
+# =====================
+# 🚀 Nút LẤY XÃ
+# =====================
+if st.button("📍 Lấy xã trong tất cả vùng đã vẽ"):
+    if st.session_state.all_polygons:
+        try:
+            union_polygon = unary_union(st.session_state.all_polygons)
+            selected_gdf = gdf[gdf.intersects(union_polygon)]
 
-            # Ghi ra file Excel
-            output_excel = BytesIO()
-            with pd.ExcelWriter(output_excel, engine="openpyxl") as writer:
-                grouped_df.to_excel(writer, index=False, sheet_name="Xa_chon")
-            output_excel.seek(0)
+            if not selected_gdf.empty:
+                st.success(f"✅ Tìm thấy {len(selected_gdf)} xã nằm trong các vùng đã vẽ.")
 
-            # Nút tải
-            st.download_button(
-                label="📥 Tải danh sách xã (Excel)",
-                data=output_excel,
-                file_name="xa_nhom_theo_huyen.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-            )
-        else:
-            st.warning("⚠️ Không có xã nào nằm trong vùng được vẽ.")
-    except Exception as e:
-        st.error(f"❌ Lỗi xử lý vùng vẽ: {e}")
+                # --- Gom xã theo huyện
+                grouped_df = (
+                    selected_gdf.groupby("Diem")["Xa"]
+                    .apply(lambda x: ", ".join(sorted(set(x))))
+                    .reset_index()
+                )
+
+                st.markdown("## 🗂️ Danh sách xã theo huyện")
+                for diem, xa_list in grouped_df.values:
+                    st.write(f"**{diem}**: {xa_list}")
+
+                # --- Ghi dữ liệu vào file template.xlsx
+                try:
+                    wb = load_workbook("template.xlsx")
+                    ws = wb.active
+
+                    start_row = 3
+                    for i, row in enumerate(grouped_df.itertuples(index=False), start=start_row):
+                        ws.cell(row=i, column=1, value=row.Diem)
+                        ws.cell(row=i, column=2, value=row.Xa)
+
+                    output = BytesIO()
+                    wb.save(output)
+                    output.seek(0)
+
+                    st.download_button(
+                        label="📥 Tải file Excel (theo template)",
+                        data=output,
+                        file_name="xa_trong_vung_ve.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    )
+                except FileNotFoundError:
+                    st.error("❌ Không tìm thấy file 'template.xlsx' trong cùng thư mục.")
+            else:
+                st.warning("⚠️ Không có xã nào nằm trong các vùng đã vẽ.")
+        except Exception as e:
+            st.error(f"❌ Lỗi xử lý vùng vẽ: {e}")
+    else:
+        st.warning("⚠️ Bạn chưa vẽ vùng nào trên bản đồ.")
 else:
-    st.info("✏️ Vui lòng vẽ một vùng trên bản đồ để bắt đầu.")
+    st.info("🖱️ Hãy vẽ vùng rồi nhấn **Lấy xã** để bắt đầu.")
