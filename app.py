@@ -192,7 +192,7 @@ if show_radar and loaded_radars:
         <div style="
             position: fixed;
             bottom: 30px;
-            left: 10px;
+            right: 10px;
             width: 60px;
             height: auto;
             z-index: 9999;
