@@ -1,7 +1,7 @@
 import streamlit as st
 import geopandas as gpd
 import folium
-from folium.plugins import Draw
+from folium.plugins import Draw, FloatImage
 from shapely.geometry import shape
 from shapely.ops import unary_union
 from streamlit_folium import st_folium
@@ -78,11 +78,28 @@ def load_all_radars():
     return loaded_radars
 
 # =====================
+# 🎨 TẢI LEGEND RADAR
+# =====================
+@st.cache_data
+def load_legend_base64():
+    """Tải ảnh legend và chuyển sang base64"""
+    try:
+        # Đọc file legend
+        with open("legend_radar.jpg", "rb") as f:
+            legend_data = f.read()
+        legend_base64 = base64.b64encode(legend_data).decode()
+        return f"data:image/jpg;base64,{legend_base64}"
+    except FileNotFoundError:
+        st.warning("⚠️ Không tìm thấy file 'legend_radar.jpg' trong cùng thư mục.")
+        return None
+
+# =====================
 # ⚙️ Tải shapefile Nghệ An
 # =====================
 @st.cache_data
 def load_shapefile():
-    gdf = gpd.read_file("Xa_NA_chuan.shp")
+    # Đọc GeoJSON thay vì shapefile để tránh lỗi fiona
+    gdf = gpd.read_file("Xa_NA_chuan.geojson")
     return gdf.to_crs(epsg=4326)
 
 gdf = load_shapefile()
@@ -166,6 +183,28 @@ if show_radar and loaded_radars:
         cross_origin=False,
         zindex=1
     ).add_to(m)
+    
+    # Thêm legend vào góc dưới bên phải
+    legend_base64 = load_legend_base64()
+    if legend_base64:
+        # Tạo HTML cho legend với CSS để điều chỉnh vị trí và kích thước (60% của kích thước gốc)
+        legend_html = f'''
+        <div style="
+            position: fixed;
+            bottom: 25px;
+            left: 10px;
+            width: 42px;
+            height: auto;
+            z-index: 9999;
+            background-color: rgba(255, 255, 255, 0.9);
+            border: 2px solid grey;
+            border-radius: 5px;
+            padding: 5px;
+        ">
+            <img src="{legend_base64}" style="width: 100%; height: auto;">
+        </div>
+        '''
+        m.get_root().html.add_child(folium.Element(legend_html))
 
 # =====================
 # ✏️ Công cụ vẽ
