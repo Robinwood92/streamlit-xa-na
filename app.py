@@ -171,7 +171,8 @@ async def _capture_radar_async():
         async with async_playwright() as p:
             browser = await p.chromium.launch(
                 headless=True,
-                args=["--disable-blink-features=AutomationControlled"]
+                args=["--disable-blink-features=AutomationControlled",
+                      "--no-sandbox", "--disable-setuid-sandbox"]
             )
 
             context = await browser.new_context(
