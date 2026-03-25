@@ -179,9 +179,7 @@ async def _capture_radar_async():
                     "--disable-blink-features=AutomationControlled",
                     "--no-sandbox",          # Bắt buộc trên Linux Container
                     "--disable-gpu",         # Giúp ổn định hơn trên server
-                    "--disable-dev-shm-usage", # Tránh lỗi bộ nhớ đệm trên Docker
-                    "--single-process",          # giảm chance crash
-                    "--disable-setuid-sandbox"
+                    "--disable-dev-shm-usage" # Tránh lỗi bộ nhớ đệm trên Docker
                 ]
             )
 
@@ -193,35 +191,18 @@ async def _capture_radar_async():
 
             page = await context.new_page()
 
-            # 1. Load trang với trạng thái 'domcontentloaded' (tải xong khung HTML)
-            # Không dùng 'networkidle' vì nó rất dễ gây timeout trên server
-            await page.goto(RADAR_URL, wait_until="networkidle", timeout=90000)
+            # ✅ giữ URL cũ của bạn (không đổi)
+            await page.goto(RADAR_URL, wait_until="domcontentloaded", timeout=60000)
 
-            # 2. Đợi đúng thành phần bản đồ xuất hiện
-            try:
-                # Đợi cho đến khi lớp Leaflet (bản đồ) hiện ra
-                await page.locator(".leaflet-layer-pane").wait_for(timeout=45000)
-                
-                # CỰC KỲ QUAN TRỌNG: Đợi thêm vài giây để dữ liệu Radar kịp vẽ lên bản đồ
-                # Nếu không có dòng này, ảnh chụp ra sẽ chỉ có bản đồ trống, không có màu radar
-                import time
-                max_wait = 20  # giây
-                for sec in range(max_wait):
-                    radar_el = await page.query_selector(".leaflet-layer-pane")
-                    if radar_el:
-                        break
-                    await page.wait_for_timeout(1000)
-                else:
-                    return None, "❌ Radar không load sau 20s"
-                time.sleep(max_wait)        
-            except Exception:
-                return None, "❌ Trang web phản hồi quá chậm hoặc không tìm thấy bản đồ."
+            # ✅ chờ map load đúng cách (tránh timeout)
+            await page.wait_for_selector("canvas", timeout=20000)
+            await page.wait_for_timeout(4000)
 
-            # 3. Lấy element bản đồ để chụp
+            # ✅ chụp đúng vùng map (không cần leaflet nữa)
             map_el = await page.query_selector(".leaflet-container")
             if not map_el:
                 await browser.close()
-                return None, "❌ Không tìm thấy vùng bản đồ."
+                return None, "❌ Không tìm thấy .leaflet-container"
 
             screenshot_bytes = await map_el.screenshot()
             await browser.close()
