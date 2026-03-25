@@ -22,7 +22,7 @@ if sys.platform.startswith("win"):
 # =====================
 # ⚙️ CẤU HÌNH CROP RADAR
 # =====================
-RADAR_URL = "http://hymetnet.gov.vn/radar/VIN"
+RADAR_URL = "https://iweather.gov.vn/dashboard/?productRadar=CMAX&areaRadar=VIN"
 
 # Vùng cần crop (tọa độ địa lý)
 CROP_MIN_LAT = 18.3
