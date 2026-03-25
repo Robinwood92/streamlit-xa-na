@@ -199,10 +199,13 @@ async def _capture_radar_async():
             await page.wait_for_timeout(4000)
 
             # ✅ chụp đúng vùng map (không cần leaflet nữa)
-            map_el = await page.query_selector(".leaflet-container")
-            if not map_el:
-                await browser.close()
-                return None, "❌ Không tìm thấy .leaflet-container"
+            for _ in range(20):  # 20 lần thử, mỗi lần 1 giây
+                map_el = await page.query_selector(".leaflet-container")
+                if map_el:
+                    break
+                await page.wait_for_timeout(1000)
+            else:
+                return None, "❌ Không tìm thấy bản đồ sau 20 giây"
 
             screenshot_bytes = await map_el.screenshot()
             await browser.close()
