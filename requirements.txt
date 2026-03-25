@@ -1,6 +1,11 @@
 streamlit
 geopandas
-shapely
 folium
 streamlit-folium
+shapely
+pandas
 openpyxl
+requests
+Pillow
+playwright
+weasyprint
