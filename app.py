@@ -161,18 +161,26 @@ def hide_rows_60_to_last(ws):
 # 📸 HÀM CHỤP VÀ CROP ẢNH RADAR TỪ WEBSITE
 # =====================
 async def _capture_radar_async():
-    """Dùng Playwright chụp trang radar, crop ổn định (không phụ thuộc Leaflet)"""
+    """Dùng Playwright chụp trang radar, tự động cài đặt trình duyệt nếu thiếu"""
     try:
         from playwright.async_api import async_playwright
     except ImportError:
-        return None, "❌ Chưa cài Playwright. Chạy: pip install playwright && playwright install chromium"
+        return None, "❌ Chưa cài Playwright trong requirements.txt"
 
     try:
+        # Tự động cài đặt chromium nếu chưa có (dành cho Streamlit Cloud)
+        import subprocess
+        subprocess.run(["playwright", "install", "chromium"], check=False)
+
         async with async_playwright() as p:
             browser = await p.chromium.launch(
                 headless=True,
-                args=["--disable-blink-features=AutomationControlled",
-                      "--no-sandbox", "--disable-setuid-sandbox"]
+                args=[
+                    "--disable-blink-features=AutomationControlled",
+                    "--no-sandbox",          # Bắt buộc trên Linux Container
+                    "--disable-gpu",         # Giúp ổn định hơn trên server
+                    "--disable-dev-shm-usage" # Tránh lỗi bộ nhớ đệm trên Docker
+                ]
             )
 
             context = await browser.new_context(
