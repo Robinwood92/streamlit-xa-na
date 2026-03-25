@@ -16,7 +16,9 @@ import base64
 from PIL import Image
 import io
 import asyncio
-asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
+import sys
+if sys.platform.startswith("win"):
+    asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
 # =====================
 # ⚙️ CẤU HÌNH CROP RADAR
 # =====================
