@@ -1,0 +1,8 @@
+streamlit>=1.38
+geopandas==0.14.4
+fiona==1.8.22
+folium==0.17.0
+shapely>=2.0
+streamlit-folium==0.21.0
+pandas>=2.1
+openpyxl>=3.1
