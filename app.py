@@ -207,13 +207,15 @@ async def _capture_radar_async():
             else:
                 return None, "❌ Không tìm thấy bản đồ sau 20 giây"
 
-            # ✅ Zoom Leaflet vào đúng tọa độ vùng cần chụp
+            # ✅ Zoom IN Leaflet vào tâm vùng cần chụp (không dùng fitBounds để tránh zoom out)
+            center_lat = (CROP_MIN_LAT + CROP_MAX_LAT) / 2
+            center_lon = (CROP_MIN_LON + CROP_MAX_LON) / 2
             zoom_js = f"""() => {{
                 try {{
                     let map = null;
                     // Cách 1: biến toàn cục phổ biến
-                    if (window._map && window._map.fitBounds) map = window._map;
-                    else if (window.map && window.map.fitBounds) map = window.map;
+                    if (window._map && window._map.setView) map = window._map;
+                    else if (window.map && window.map.setView) map = window.map;
                     // Cách 2: duyệt window
                     if (!map) {{
                         for (const key of Object.keys(window)) {{
@@ -228,18 +230,19 @@ async def _capture_radar_async():
                         const el = document.querySelector('.leaflet-container');
                         if (el && el._leaflet_map) map = el._leaflet_map;
                     }}
-                    if (!map) return false;
-                    map.fitBounds(
-                        [[{CROP_MIN_LAT}, {CROP_MIN_LON}], [{CROP_MAX_LAT}, {CROP_MAX_LON}]],
-                        {{ animate: false, padding: [0, 0] }}
-                    );
-                    return true;
-                }} catch(e) {{ return false; }}
+                    if (!map) return map.getZoom();
+                    const currentZoom = map.getZoom();
+                    const targetZoom = 8;  // zoom level cho vùng Nghệ An (~2° × 2.6°)
+                    // Chỉ zoom IN — không bao giờ zoom out
+                    const newZoom = Math.max(currentZoom, targetZoom);
+                    map.setView([{center_lat}, {center_lon}], newZoom, {{ animate: false }});
+                    return newZoom;
+                }} catch(e) {{ return -1; }}
             }}"""
 
-            zoom_ok = await page.evaluate(zoom_js)
-            if zoom_ok:
-                await page.wait_for_timeout(3000)  # chờ tiles reload sau khi zoom
+            zoom_result = await page.evaluate(zoom_js)
+            if zoom_result and zoom_result > 0:
+                await page.wait_for_timeout(3000)  # chờ tiles reload sau khi zoom in
             else:
                 await page.wait_for_timeout(1000)  # fallback: chụp nguyên trạng
 
