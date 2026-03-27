@@ -217,10 +217,10 @@ async def _capture_radar_async():
             w, h = img.size
 
             # ⚠️ mặc định (có thể chỉnh nếu lệch)
-            LEFT_RATIO = 0.30
+            LEFT_RATIO = 0.33
             RIGHT_RATIO = 0.45
-            TOP_RATIO = 0.23
-            BOTTOM_RATIO = 0.45
+            TOP_RATIO = 0.27
+            BOTTOM_RATIO = 0.37
 
             x1 = int(w * LEFT_RATIO)
             x2 = int(w * RIGHT_RATIO)
