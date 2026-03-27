@@ -184,8 +184,8 @@ async def _capture_radar_async():
             )
 
             context = await browser.new_context(
-                viewport={"width": 1400, "height": 900},
-                device_scale_factor=2,
+                viewport={"width": 1920, "height": 1080},
+                device_scale_factor=3,   # ↑ tăng lên 3x → ảnh sắc nét hơn nhiều
                 user_agent="Mozilla/5.0"
             )
 
@@ -198,8 +198,8 @@ async def _capture_radar_async():
             await page.wait_for_selector("canvas", timeout=20000)
             await page.wait_for_timeout(4000)
 
-            # ✅ chụp đúng vùng map (không cần leaflet nữa)
-            for _ in range(20):  # 20 lần thử, mỗi lần 1 giây
+            # ✅ Chờ Leaflet map sẵn sàng
+            for _ in range(20):
                 map_el = await page.query_selector(".leaflet-container")
                 if map_el:
                     break
@@ -207,28 +207,63 @@ async def _capture_radar_async():
             else:
                 return None, "❌ Không tìm thấy bản đồ sau 20 giây"
 
-            screenshot_bytes = await map_el.screenshot()
+            # ✅ Zoom Leaflet vào đúng tọa độ vùng cần chụp
+            zoom_js = f"""() => {{
+                try {{
+                    let map = null;
+                    // Cách 1: biến toàn cục phổ biến
+                    if (window._map && window._map.fitBounds) map = window._map;
+                    else if (window.map && window.map.fitBounds) map = window.map;
+                    // Cách 2: duyệt window
+                    if (!map) {{
+                        for (const key of Object.keys(window)) {{
+                            const obj = window[key];
+                            if (obj && typeof obj === 'object' && obj.fitBounds && obj.setView) {{
+                                map = obj; break;
+                            }}
+                        }}
+                    }}
+                    // Cách 3: lấy từ DOM element nội bộ Leaflet
+                    if (!map) {{
+                        const el = document.querySelector('.leaflet-container');
+                        if (el && el._leaflet_map) map = el._leaflet_map;
+                    }}
+                    if (!map) return false;
+                    map.fitBounds(
+                        [[{CROP_MIN_LAT}, {CROP_MIN_LON}], [{CROP_MAX_LAT}, {CROP_MAX_LON}]],
+                        {{ animate: false, padding: [0, 0] }}
+                    );
+                    return true;
+                }} catch(e) {{ return false; }}
+            }}"""
+
+            zoom_ok = await page.evaluate(zoom_js)
+            if zoom_ok:
+                await page.wait_for_timeout(3000)  # chờ tiles reload sau khi zoom
+            else:
+                await page.wait_for_timeout(1000)  # fallback: chụp nguyên trạng
+
+            screenshot_bytes = await map_el.screenshot(
+                type="png",
+                scale="device"  # dùng device pixel ratio → sắc nét, không bị scale down
+            )
             await browser.close()
 
             # =====================
-            # ✂️ CROP (thay cho lat/lon)
+            # ✂️ CROP nhẹ (tùy chỉnh nếu cần cắt bỏ UI thừa ở rìa)
             # =====================
             img = Image.open(io.BytesIO(screenshot_bytes))
             w, h = img.size
 
-            # ⚠️ mặc định (có thể chỉnh nếu lệch)
-            LEFT_RATIO = 0.33
-            RIGHT_RATIO = 0.45
-            TOP_RATIO = 0.27
-            BOTTOM_RATIO = 0.37
+            # Chụp thẳng .leaflet-container nên đã đúng vùng — không cần crop ratio
+            # Nếu muốn cắt bỏ legend/watermark ở rìa, chỉnh các giá trị pixel dưới:
+            LEFT_CROP_PX  = 0   # pixel cắt từ trái
+            RIGHT_CROP_PX = 0   # pixel cắt từ phải
+            TOP_CROP_PX   = 0   # pixel cắt từ trên
+            BOT_CROP_PX   = 0   # pixel cắt từ dưới
 
-            x1 = int(w * LEFT_RATIO)
-            x2 = int(w * RIGHT_RATIO)
-            y1 = int(h * TOP_RATIO)
-            y2 = int(h * BOTTOM_RATIO)
-
-            if x2 <= x1 or y2 <= y1:
-                return None, f"❌ Crop lỗi: ({x1},{y1}) → ({x2},{y2}), size={w}x{h}"
+            x1, y1 = LEFT_CROP_PX, TOP_CROP_PX
+            x2, y2 = w - RIGHT_CROP_PX if RIGHT_CROP_PX else w, h - BOT_CROP_PX if BOT_CROP_PX else h
 
             cropped = img.crop((x1, y1, x2, y2))
 
@@ -487,15 +522,13 @@ if st.button("📍 Lấy xã trong tất cả vùng đã vẽ"):
                             total_w = sum(col_width_px(ws, get_column_letter(c)) for c in range(sc, ec + 1))
                             total_h = sum(row_height_px(ws, r) for r in range(START_ROW, END_ROW + 1))
 
-                            # Resize ảnh về đúng kích thước vùng B14:G23
-                            pil_img = Image.open(radar_buf)
-                            pil_img = pil_img.resize((total_w, total_h), Image.LANCZOS)
-                            resized_buf = io.BytesIO()
-                            pil_img.save(resized_buf, format='PNG')
-                            resized_buf.seek(0)
-
-                            xl_img = XLImage(resized_buf)
+                            # ✅ KHÔNG resize PIL → giữ nguyên độ phân giải gốc
+                            # openpyxl tự scale ảnh khớp vùng B14:F23
+                            radar_buf.seek(0)
+                            xl_img = XLImage(radar_buf)
                             xl_img.anchor = RADAR_IMG_CELL
+                            xl_img.width  = total_w   # pixel width của vùng Excel
+                            xl_img.height = total_h   # pixel height của vùng Excel
                             ws.add_image(xl_img)
                             st.info(f"🖼️ Đã chèn ảnh radar vào vùng **B14:F23** ({total_w}×{total_h}px)")
                         except Exception as img_err:
