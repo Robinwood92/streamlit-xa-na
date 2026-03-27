@@ -242,32 +242,44 @@ async def _capture_radar_async():
 
             zoom_result = await page.evaluate(zoom_js)
             if zoom_result and zoom_result > 0:
-                await page.wait_for_timeout(3000)  # chờ tiles reload sau khi zoom in
+                await page.wait_for_timeout(2000)  # chờ tiles reload sau setView
             else:
-                await page.wait_for_timeout(1000)  # fallback: chụp nguyên trạng
+                await page.wait_for_timeout(500)
 
-            screenshot_bytes = await map_el.screenshot(
+            # =====================
+            # 🖱️ Focus vào map + scroll zoom IN thêm (theo gợi ý ChatGPT, cải tiến)
+            # =====================
+            box = await map_el.bounding_box()
+            cx = box["x"] + box["width"]  / 2
+            cy = box["y"] + box["height"] / 2
+
+            # Click vào giữa map để đảm bảo nhận sự kiện wheel
+            await page.mouse.click(cx, cy)
+
+            # Scroll zoom IN 2 lần (scroll up = zoom in trong Leaflet)
+            SCROLL_TIMES = 2        # tăng nếu muốn zoom sâu hơn
+            SCROLL_DELTA = -300     # âm = lên = zoom in; giảm xuống -600 nếu mỗi bước zoom ít
+            for _ in range(SCROLL_TIMES):
+                await page.mouse.wheel(0, SCROLL_DELTA)
+                await page.wait_for_timeout(1500)   # chờ tile load sau mỗi bước
+
+            # =====================
+            # 📸 Chụp full page rồi crop theo bounding box của map element
+            # =====================
+            full_img_bytes = await page.screenshot(
+                full_page=False,    # chụp viewport (không scroll thêm)
                 type="png",
-                scale="device"  # dùng device pixel ratio → sắc nét, không bị scale down
+                scale="device"      # device pixel ratio → sắc nét
             )
             await browser.close()
 
-            # =====================
-            # ✂️ CROP nhẹ (tùy chỉnh nếu cần cắt bỏ UI thừa ở rìa)
-            # =====================
-            img = Image.open(io.BytesIO(screenshot_bytes))
-            w, h = img.size
-
-            # Chụp thẳng .leaflet-container nên đã đúng vùng — không cần crop ratio
-            # Nếu muốn cắt bỏ legend/watermark ở rìa, chỉnh các giá trị pixel dưới:
-            LEFT_CROP_PX  = 0   # pixel cắt từ trái
-            RIGHT_CROP_PX = 0   # pixel cắt từ phải
-            TOP_CROP_PX   = 0   # pixel cắt từ trên
-            BOT_CROP_PX   = 0   # pixel cắt từ dưới
-
-            x1, y1 = LEFT_CROP_PX, TOP_CROP_PX
-            x2, y2 = w - RIGHT_CROP_PX if RIGHT_CROP_PX else w, h - BOT_CROP_PX if BOT_CROP_PX else h
-
+            # Crop chính xác vùng map element từ ảnh full viewport
+            img  = Image.open(io.BytesIO(full_img_bytes))
+            dpr  = 3  # phải khớp với device_scale_factor ở trên
+            x1   = int(box["x"]      * dpr)
+            y1   = int(box["y"]      * dpr)
+            x2   = int((box["x"] + box["width"])  * dpr)
+            y2   = int((box["y"] + box["height"]) * dpr)
             cropped = img.crop((x1, y1, x2, y2))
 
             buf = io.BytesIO()
