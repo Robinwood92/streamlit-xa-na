@@ -251,7 +251,7 @@ async def _capture_radar_async():
             # =====================
             box = await map_el.bounding_box()
             cx = box["x"] + box["width"]  / 2 + 30
-            cy = box["y"] + box["height"] / 2 + 10
+            cy = box["y"] + box["height"] / 2 - 100
 
             # Click vào giữa map để đảm bảo nhận sự kiện wheel
             await page.mouse.click(cx, cy)
