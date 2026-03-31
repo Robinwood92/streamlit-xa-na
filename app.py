@@ -214,7 +214,7 @@ async def _capture_radar_async():
             TARGET_LAT = 19.5
             TARGET_LON = 106.5
             # Zoom level thấp hơn (7) để góc nhìn rộng hơn
-            TARGET_ZOOM = 7
+            TARGET_ZOOM = 10
 
             # Bơm Javascript vào trình duyệt để điều khiển Leaflet map trực tiếp
             zoom_js = f"""() => {{
