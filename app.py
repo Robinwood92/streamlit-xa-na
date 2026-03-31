@@ -514,7 +514,8 @@ if st.button("📍 Lấy xã trong tất cả vùng đã vẽ"):
                     radar_buf = st.session_state.get("radar_screenshot")
                     if radar_buf:
                         try:
-                            radar_buf.seek(0)
+                            # ✅ TẠO BẢN SAO ĐỘC LẬP TỪ BYTES ĐỂ TRÁNH BỊ ĐÓNG FILE KHI LƯU
+                            img_data = io.BytesIO(radar_buf.getvalue())
 
                             # Tính kích thước pixel khớp với vùng B14:G23
                             from openpyxl.utils import column_index_from_string, get_column_letter
@@ -537,10 +538,8 @@ if st.button("📍 Lấy xã trong tất cả vùng đã vẽ"):
                             total_w = sum(col_width_px(ws, get_column_letter(c)) for c in range(sc, ec + 1))
                             total_h = sum(row_height_px(ws, r) for r in range(START_ROW, END_ROW + 1))
 
-                            # ✅ KHÔNG resize PIL → giữ nguyên độ phân giải gốc
-                            # openpyxl tự scale ảnh khớp vùng B14:F23
-                            radar_buf.seek(0)
-                            xl_img = XLImage(radar_buf)
+                            # Sử dụng img_data thay vì radar_buf
+                            xl_img = XLImage(img_data)
                             xl_img.anchor = RADAR_IMG_CELL
                             xl_img.width  = total_w   # pixel width của vùng Excel
                             xl_img.height = total_h   # pixel height của vùng Excel
@@ -551,15 +550,20 @@ if st.button("📍 Lấy xã trong tất cả vùng đã vẽ"):
                     else:
                         st.info("ℹ️ Chưa có ảnh radar — nhấn **Chụp màn hình Radar** ở sidebar để thêm vào Excel.")
 
+                    # ✅ CHỈ LƯU WORKBOOK 1 LẦN VÀO RAM
                     output = BytesIO()
                     wb.save(output)
-                    excel_data = output.getvalue()
-                    output.seek(0)
+                    excel_data = output.getvalue() # Lấy mảng byte an toàn
+                    
                     now = datetime.now()
                     filename_base = now.strftime("NGAN_DONG_%Y%m%d_%H%M")
                     excel_filename = f"{filename_base}.xlsx"
-                    wb.save(excel_filename)
+                    
+                    # ✅ LƯU RA DISK TỪ MẢNG BYTE (Tránh gọi wb.save lần 2 gây lỗi)
+                    with open(excel_filename, "wb") as f:
+                        f.write(excel_data)
 
+                    # Tải file xuống
                     st.download_button(
                         label="📥 Tải file Excel (theo template)",
                         data=excel_data,
