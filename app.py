@@ -194,7 +194,7 @@ async def _capture_radar_async():
 
             # 4. ZOOM THỦ CÔNG (Cuộn chuột lên - Scroll Up)
             # Tăng SCROLL_TIMES nếu bạn muốn zoom sát hơn nữa
-            SCROLL_TIMES = 4  # Cuộn 4 nấc để từ toàn cảnh vào sát Nghệ An
+            SCROLL_TIMES = 3  # Cuộn 4 nấc để từ toàn cảnh vào sát Nghệ An
             for _ in range(SCROLL_TIMES):
                 await page.mouse.wheel(0, -500) # -500 là cuộn lên (Zoom In)
                 await page.wait_for_timeout(800) # Chờ một chút giữa các nấc zoom
