@@ -168,7 +168,7 @@ async def _capture_radar_async():
         return None, "❌ Chưa cài Playwright trong requirements.txt"
 
     try:
-        # Tự động cài đặt chromium nếu chưa có (dành cho Streamlit Cloud)
+        # Tự động cài đặt chromium nếu chưa có
         import subprocess
         subprocess.run(["playwright", "install", "chromium"], check=False)
 
@@ -177,24 +177,24 @@ async def _capture_radar_async():
                 headless=True,
                 args=[
                     "--disable-blink-features=AutomationControlled",
-                    "--no-sandbox",          # Bắt buộc trên Linux Container
-                    "--disable-gpu",         # Giúp ổn định hơn trên server
-                    "--disable-dev-shm-usage" # Tránh lỗi bộ nhớ đệm trên Docker
+                    "--no-sandbox",
+                    "--disable-gpu",
+                    "--disable-dev-shm-usage"
                 ]
             )
 
             context = await browser.new_context(
                 viewport={"width": 1920, "height": 1080},
-                device_scale_factor=3,   # ↑ tăng lên 3x → ảnh sắc nét hơn nhiều
+                device_scale_factor=3,   # Ảnh sắc nét 3x
                 user_agent="Mozilla/5.0"
             )
 
             page = await context.new_page()
 
-            # ✅ giữ URL cũ của bạn (không đổi)
+            # ✅ Giữ URL gốc
             await page.goto(RADAR_URL, wait_until="domcontentloaded", timeout=60000)
 
-            # ✅ chờ map load đúng cách (tránh timeout)
+            # ✅ Chờ map load
             await page.wait_for_selector("canvas", timeout=20000)
             await page.wait_for_timeout(4000)
 
@@ -207,75 +207,59 @@ async def _capture_radar_async():
             else:
                 return None, "❌ Không tìm thấy bản đồ sau 20 giây"
 
-            # ✅ Zoom IN Leaflet vào tâm vùng cần chụp (không dùng fitBounds để tránh zoom out)
-            center_lat = (CROP_MIN_LAT + CROP_MAX_LAT) / 2
-            center_lon = (CROP_MIN_LON + CROP_MAX_LON) / 2
+            # ========================================================
+            # 🎯 CỐ ĐỊNH TỌA ĐỘ VÀ ZOOM ĐỂ RA GÓC NHÌN NHƯ ẢNH MẪU
+            # ========================================================
+            # Tọa độ trung tâm để nhìn rõ Nghệ An, Thanh Hóa và Biển Đông
+            TARGET_LAT = 19.5
+            TARGET_LON = 106.5
+            # Zoom level thấp hơn (7) để góc nhìn rộng hơn
+            TARGET_ZOOM = 7
+
+            # Bơm Javascript vào trình duyệt để điều khiển Leaflet map trực tiếp
             zoom_js = f"""() => {{
                 try {{
                     let map = null;
-                    // Cách 1: biến toàn cục phổ biến
                     if (window._map && window._map.setView) map = window._map;
                     else if (window.map && window.map.setView) map = window.map;
-                    // Cách 2: duyệt window
-                    if (!map) {{
-                        for (const key of Object.keys(window)) {{
-                            const obj = window[key];
-                            if (obj && typeof obj === 'object' && obj.fitBounds && obj.setView) {{
-                                map = obj; break;
-                            }}
-                        }}
-                    }}
-                    // Cách 3: lấy từ DOM element nội bộ Leaflet
+                    
                     if (!map) {{
                         const el = document.querySelector('.leaflet-container');
                         if (el && el._leaflet_map) map = el._leaflet_map;
                     }}
-                    if (!map) return map.getZoom();
-                    const currentZoom = map.getZoom();
-                    const targetZoom = 8;  // zoom level cho vùng Nghệ An (~2° × 2.6°)
-                    // Chỉ zoom IN — không bao giờ zoom out
-                    const newZoom = Math.max(currentZoom, targetZoom);
-                    map.setView([{center_lat}, {center_lon}], newZoom, {{ animate: false }});
-                    return newZoom;
-                }} catch(e) {{ return -1; }}
+                    
+                    if (map) {{
+                        // Dịch chuyển tâm bản đồ và đặt mức zoom mới
+                        map.setView([{TARGET_LAT}, {TARGET_LON}], {TARGET_ZOOM}, {{ animate: false }});
+                        return true;
+                    }}
+                    return false;
+                }} catch(e) {{ return false; }}
             }}"""
 
-            zoom_result = await page.evaluate(zoom_js)
-            if zoom_result and zoom_result > 0:
-                await page.wait_for_timeout(2000)  # chờ tiles reload sau setView
+            # Thực thi Javascript
+            is_zoomed = await page.evaluate(zoom_js)
+            
+            if is_zoomed:
+                # ⏳ Đợi 3 giây để bản đồ tải các mảnh radar mới sau khi dịch chuyển
+                await page.wait_for_timeout(3000) 
             else:
                 await page.wait_for_timeout(500)
 
             # =====================
-            # 🖱️ Focus vào map + scroll zoom IN thêm (theo gợi ý ChatGPT, cải tiến)
+            # 📸 Chụp và Crop
             # =====================
             box = await map_el.bounding_box()
-            cx = box["x"] + box["width"]  / 2 - 10
-            cy = box["y"] + box["height"] / 2 + 10
-
-            # Click vào giữa map để đảm bảo nhận sự kiện wheel
-            await page.mouse.click(cx, cy)
-
-            # Scroll zoom IN 2 lần (scroll up = zoom in trong Leaflet)
-            SCROLL_TIMES = 2        # tăng nếu muốn zoom sâu hơn
-            SCROLL_DELTA = -300     # âm = lên = zoom in; giảm xuống -600 nếu mỗi bước zoom ít
-            for _ in range(SCROLL_TIMES):
-                await page.mouse.wheel(0, SCROLL_DELTA)
-                await page.wait_for_timeout(1500)   # chờ tile load sau mỗi bước
-
-            # =====================
-            # 📸 Chụp full page rồi crop theo bounding box của map element
-            # =====================
             full_img_bytes = await page.screenshot(
-                full_page=False,    # chụp viewport (không scroll thêm)
+                full_page=False,    
                 type="png",
-                scale="device"      # device pixel ratio → sắc nét
+                scale="device"      
             )
             await browser.close()
 
-            # Crop chính xác vùng map element từ ảnh full viewport
+            # Crop chính xác vùng bản đồ từ ảnh full viewport
             img  = Image.open(io.BytesIO(full_img_bytes))
-            dpr  = 3  # phải khớp với device_scale_factor ở trên
+            dpr  = 3 
             x1   = int(box["x"]      * dpr)
             y1   = int(box["y"]      * dpr)
             x2   = int((box["x"] + box["width"])  * dpr)
