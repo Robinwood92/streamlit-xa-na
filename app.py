@@ -186,7 +186,7 @@ async def _capture_radar_async():
             # cx: Giữa màn hình ngang
             # cy: Giữa màn hình dọc - 200 pixel (dịch lên trên ~1 độ vĩ độ)
             cx = box["x"] + box["width"] / 2 - 50
-            cy = box["y"] + box["height"] / 2 + 50 
+            cy = box["y"] + box["height"] / 2 - 100 
 
             # Click để focus vào vùng Nghệ An - Thanh Hóa
             await page.mouse.click(cx, cy)
