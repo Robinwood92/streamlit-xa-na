@@ -185,7 +185,7 @@ async def _capture_radar_async():
             # 3. Tọa độ CLICK (Dịch lên trên để focus đúng 19N - 20N)
             # cx: Giữa màn hình ngang
             # cy: Giữa màn hình dọc - 200 pixel (dịch lên trên ~1 độ vĩ độ)
-            cx = box["x"] + box["width"] / 2 - 20
+            cx = box["x"] + box["width"] / 2 - 70
             cy = box["y"] + box["height"] / 2 + 30 
 
             # Click để focus vào vùng Nghệ An - Thanh Hóa
