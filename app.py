@@ -377,7 +377,7 @@ folium.GeoJson(
 # 🛰️ Thêm lớp Radar vào bản đồ
 # =====================
 if show_radar and loaded_radars:
-    center_lat, center_lon = 18.656, 105.71083
+    center_lat, center_lon = (CROP_MIN_LAT + CROP_MAX_LAT) / 2 - 10, (CROP_MIN_LON + CROP_MAX_LON) / 2 + 10
     radius_deg = 2.8
 
     bounds = [
