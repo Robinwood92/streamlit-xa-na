@@ -208,7 +208,7 @@ async def _capture_radar_async():
             # =====================
             TARGET_LAT = 19.0
             TARGET_LON = 105.0
-            TARGET_ZOOM = 9  # Tăng lên 10 hoặc 11 nếu bạn muốn zoom sát hơn nữa
+            TARGET_ZOOM = 11  # Tăng lên 10 hoặc 11 nếu bạn muốn zoom sát hơn nữa
 
             # Bơm Javascript vào trình duyệt để điều khiển Leaflet map
             zoom_js = f"""() => {{
