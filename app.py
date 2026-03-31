@@ -211,40 +211,45 @@ async def _capture_radar_async():
             # 🎯 CỐ ĐỊNH TỌA ĐỘ VÀ ZOOM ĐỂ RA GÓC NHÌN NHƯ ẢNH MẪU
             # ========================================================
             # Tọa độ trung tâm để nhìn rõ Nghệ An, Thanh Hóa và Biển Đông
-            TARGET_LAT = 19.5
-            TARGET_LON = 106.5
-            # Zoom level thấp hơn (7) để góc nhìn rộng hơn
-            TARGET_ZOOM = 10
+            # =====================
+            # 🎯 ĐIỀU CHỈNH CHUẨN ĐỂ LẤY KHUNG HÌNH CẬN CẢNH
+            # =====================
+            # Tọa độ này sẽ đặt tâm ở giữa Thanh Hóa và Nghệ An, hơi lệch ra biển
+            TARGET_LAT = 19.4 
+            TARGET_LON = 106.3
+            # ÉP ZOOM LÊN MỨC 8 (Cận cảnh hơn mức 7 bạn đang dùng)
+            TARGET_ZOOM = 8 
 
-            # Bơm Javascript vào trình duyệt để điều khiển Leaflet map trực tiếp
             zoom_js = f"""() => {{
                 try {{
                     let map = null;
-                    if (window._map && window._map.setView) map = window._map;
-                    else if (window.map && window.map.setView) map = window.map;
-                    
-                    if (!map) {{
-                        const el = document.querySelector('.leaflet-container');
-                        if (el && el._leaflet_map) map = el._leaflet_map;
-                    }}
-                    
+                    const el = document.querySelector('.leaflet-container');
+                    if (el && el._leaflet_map) map = el._leaflet_map;
+                    else if (window._map) map = window._map;
+                    else if (window.map) map = window.map;
+
                     if (map) {{
-                        // Dịch chuyển tâm bản đồ và đặt mức zoom mới
-                        map.setView([{TARGET_LAT}, {TARGET_LON}], {TARGET_ZOOM}, {{ animate: false }});
+                        // Dùng flyTo với duration 0 để nhảy ngay lập tức và ghi đè các thiết lập khác
+                        map.flyTo([{TARGET_LAT}, {TARGET_LON}], {TARGET_ZOOM}, {{ animate: false, duration: 0 }});
+                        
+                        // Xóa bỏ các thanh điều hướng hoặc icon thừa nếu chúng che khuất ảnh
+                        const controls = document.querySelectorAll('.leaflet-control');
+                        controls.forEach(c => c.style.display = 'none');
+                        
                         return true;
                     }}
                     return false;
                 }} catch(e) {{ return false; }}
             }}"""
 
-            # Thực thi Javascript
             is_zoomed = await page.evaluate(zoom_js)
             
             if is_zoomed:
-                # ⏳ Đợi 3 giây để bản đồ tải các mảnh radar mới sau khi dịch chuyển
-                await page.wait_for_timeout(3000) 
+                # ⏳ Tăng thời gian chờ lên 5 giây để đảm bảo các mảnh bản đồ (tiles) và 
+                # dữ liệu radar trắng/xanh load đầy đủ sau khi zoom
+                await page.wait_for_timeout(5000) 
             else:
-                await page.wait_for_timeout(500)
+                await page.wait_for_timeout(1000)
 
             # =====================
             # 📸 Chụp và Crop
