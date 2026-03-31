@@ -556,11 +556,12 @@ if st.button("📍 Lấy xã trong tất cả vùng đã vẽ"):
                     filename_base = now.strftime("NGAN_DONG_%Y%m%d_%H%M")
                     excel_filename = f"{filename_base}.xlsx"
                     wb.save(excel_filename)
+                    wb.save(output)
                     output.seek(0)
 
                     st.download_button(
                         label="📥 Tải file Excel (theo template)",
-                        data=output,
+                        data=output.getvalue(),
                         file_name=excel_filename,
                         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                     )
