@@ -22,7 +22,7 @@ if sys.platform.startswith("win"):
 # =====================
 # ⚙️ CẤU HÌNH CROP RADAR
 # =====================
-RADAR_URL = "http://hymetnet.gov.vn/radar/VIN"
+RADAR_URL = "https://iweather.gov.vn/dashboard/?productRadar=CMAX&areaRadar=VIN"
 
 # Vùng cần crop (tọa độ địa lý)
 CROP_MIN_LAT = 18.3
@@ -161,22 +161,31 @@ def hide_rows_60_to_last(ws):
 # 📸 HÀM CHỤP VÀ CROP ẢNH RADAR TỪ WEBSITE
 # =====================
 async def _capture_radar_async():
-    """Dùng Playwright chụp trang radar, crop ổn định (không phụ thuộc Leaflet)"""
+    """Dùng Playwright chụp trang radar, tự động cài đặt trình duyệt nếu thiếu"""
     try:
         from playwright.async_api import async_playwright
     except ImportError:
-        return None, "❌ Chưa cài Playwright. Chạy: pip install playwright && playwright install chromium"
+        return None, "❌ Chưa cài Playwright trong requirements.txt"
 
     try:
+        # Tự động cài đặt chromium nếu chưa có (dành cho Streamlit Cloud)
+        import subprocess
+        subprocess.run(["playwright", "install", "chromium"], check=False)
+
         async with async_playwright() as p:
             browser = await p.chromium.launch(
                 headless=True,
-                args=["--disable-blink-features=AutomationControlled"]
+                args=[
+                    "--disable-blink-features=AutomationControlled",
+                    "--no-sandbox",          # Bắt buộc trên Linux Container
+                    "--disable-gpu",         # Giúp ổn định hơn trên server
+                    "--disable-dev-shm-usage" # Tránh lỗi bộ nhớ đệm trên Docker
+                ]
             )
 
             context = await browser.new_context(
-                viewport={"width": 1400, "height": 900},
-                device_scale_factor=2,
+                viewport={"width": 1920, "height": 1080},
+                device_scale_factor=3,   # ↑ tăng lên 3x → ảnh sắc nét hơn nhiều
                 user_agent="Mozilla/5.0"
             )
 
@@ -189,35 +198,88 @@ async def _capture_radar_async():
             await page.wait_for_selector("canvas", timeout=20000)
             await page.wait_for_timeout(4000)
 
-            # ✅ chụp đúng vùng map (không cần leaflet nữa)
-            map_el = await page.query_selector(".leaflet-container")
-            if not map_el:
-                await browser.close()
-                return None, "❌ Không tìm thấy .leaflet-container"
+            # ✅ Chờ Leaflet map sẵn sàng
+            for _ in range(20):
+                map_el = await page.query_selector(".leaflet-container")
+                if map_el:
+                    break
+                await page.wait_for_timeout(1000)
+            else:
+                return None, "❌ Không tìm thấy bản đồ sau 20 giây"
 
-            screenshot_bytes = await map_el.screenshot()
+            # ✅ Zoom IN Leaflet vào tâm vùng cần chụp (không dùng fitBounds để tránh zoom out)
+            center_lat = (CROP_MIN_LAT + CROP_MAX_LAT) / 2
+            center_lon = (CROP_MIN_LON + CROP_MAX_LON) / 2
+            zoom_js = f"""() => {{
+                try {{
+                    let map = null;
+                    // Cách 1: biến toàn cục phổ biến
+                    if (window._map && window._map.setView) map = window._map;
+                    else if (window.map && window.map.setView) map = window.map;
+                    // Cách 2: duyệt window
+                    if (!map) {{
+                        for (const key of Object.keys(window)) {{
+                            const obj = window[key];
+                            if (obj && typeof obj === 'object' && obj.fitBounds && obj.setView) {{
+                                map = obj; break;
+                            }}
+                        }}
+                    }}
+                    // Cách 3: lấy từ DOM element nội bộ Leaflet
+                    if (!map) {{
+                        const el = document.querySelector('.leaflet-container');
+                        if (el && el._leaflet_map) map = el._leaflet_map;
+                    }}
+                    if (!map) return map.getZoom();
+                    const currentZoom = map.getZoom();
+                    const targetZoom = 8;  // zoom level cho vùng Nghệ An (~2° × 2.6°)
+                    // Chỉ zoom IN — không bao giờ zoom out
+                    const newZoom = Math.max(currentZoom, targetZoom);
+                    map.setView([{center_lat}, {center_lon}], newZoom, {{ animate: false }});
+                    return newZoom;
+                }} catch(e) {{ return -1; }}
+            }}"""
+
+            zoom_result = await page.evaluate(zoom_js)
+            if zoom_result and zoom_result > 0:
+                await page.wait_for_timeout(2000)  # chờ tiles reload sau setView
+            else:
+                await page.wait_for_timeout(500)
+
+            # =====================
+            # 🖱️ Focus vào map + scroll zoom IN thêm (theo gợi ý ChatGPT, cải tiến)
+            # =====================
+            box = await map_el.bounding_box()
+            cx = box["x"] + box["width"]  / 2 - 20
+            cy = box["y"] + box["height"] / 2 + 10
+
+            # Click vào giữa map để đảm bảo nhận sự kiện wheel
+            await page.mouse.click(cx, cy)
+
+            # Scroll zoom IN 2 lần (scroll up = zoom in trong Leaflet)
+            SCROLL_TIMES = 2        # tăng nếu muốn zoom sâu hơn
+            SCROLL_DELTA = -300     # âm = lên = zoom in; giảm xuống -600 nếu mỗi bước zoom ít
+            for _ in range(SCROLL_TIMES):
+                await page.mouse.wheel(0, SCROLL_DELTA)
+                await page.wait_for_timeout(1500)   # chờ tile load sau mỗi bước
+
+            # =====================
+            # 📸 Chụp full page rồi crop theo bounding box của map element
+            # =====================
+            full_img_bytes = await page.screenshot(
+                full_page=False,    # chụp viewport (không scroll thêm)
+                type="png",
+                scale="device"      # device pixel ratio → sắc nét
+            )
             await browser.close()
 
-            # =====================
-            # ✂️ CROP (thay cho lat/lon)
-            # =====================
-            img = Image.open(io.BytesIO(screenshot_bytes))
-            w, h = img.size
-
-            # ⚠️ mặc định (có thể chỉnh nếu lệch)
-            LEFT_RATIO = 0.30
-            RIGHT_RATIO = 0.65
-            TOP_RATIO = 0.28
-            BOTTOM_RATIO = 0.68
-
-            x1 = int(w * LEFT_RATIO)
-            x2 = int(w * RIGHT_RATIO)
-            y1 = int(h * TOP_RATIO)
-            y2 = int(h * BOTTOM_RATIO)
-
-            if x2 <= x1 or y2 <= y1:
-                return None, f"❌ Crop lỗi: ({x1},{y1}) → ({x2},{y2}), size={w}x{h}"
-
+            # Crop chính xác vùng map element từ ảnh full viewport
+            img  = Image.open(io.BytesIO(full_img_bytes))
+            dpr  = 3  # phải khớp với device_scale_factor ở trên
+            x1   = int(box["x"]      * dpr)
+            y1   = int(box["y"]      * dpr)
+            x2   = int((box["x"] + box["width"])  * dpr)
+            y2   = int((box["y"] + box["height"]) * dpr)
             cropped = img.crop((x1, y1, x2, y2))
 
             buf = io.BytesIO()
@@ -452,7 +514,8 @@ if st.button("📍 Lấy xã trong tất cả vùng đã vẽ"):
                     radar_buf = st.session_state.get("radar_screenshot")
                     if radar_buf:
                         try:
-                            radar_buf.seek(0)
+                            # ✅ TẠO BẢN SAO ĐỘC LẬP TỪ BYTES ĐỂ TRÁNH BỊ ĐÓNG FILE KHI LƯU
+                            img_data = io.BytesIO(radar_buf.getvalue())
 
                             # Tính kích thước pixel khớp với vùng B14:G23
                             from openpyxl.utils import column_index_from_string, get_column_letter
@@ -475,15 +538,11 @@ if st.button("📍 Lấy xã trong tất cả vùng đã vẽ"):
                             total_w = sum(col_width_px(ws, get_column_letter(c)) for c in range(sc, ec + 1))
                             total_h = sum(row_height_px(ws, r) for r in range(START_ROW, END_ROW + 1))
 
-                            # Resize ảnh về đúng kích thước vùng B14:G23
-                            pil_img = Image.open(radar_buf)
-                            pil_img = pil_img.resize((total_w, total_h), Image.LANCZOS)
-                            resized_buf = io.BytesIO()
-                            pil_img.save(resized_buf, format='PNG')
-                            resized_buf.seek(0)
-
-                            xl_img = XLImage(resized_buf)
+                            # Sử dụng img_data thay vì radar_buf
+                            xl_img = XLImage(img_data)
                             xl_img.anchor = RADAR_IMG_CELL
+                            xl_img.width  = total_w   # pixel width của vùng Excel
+                            xl_img.height = total_h   # pixel height của vùng Excel
                             ws.add_image(xl_img)
                             st.info(f"🖼️ Đã chèn ảnh radar vào vùng **B14:F23** ({total_w}×{total_h}px)")
                         except Exception as img_err:
@@ -491,16 +550,23 @@ if st.button("📍 Lấy xã trong tất cả vùng đã vẽ"):
                     else:
                         st.info("ℹ️ Chưa có ảnh radar — nhấn **Chụp màn hình Radar** ở sidebar để thêm vào Excel.")
 
+                    # ✅ CHỈ LƯU WORKBOOK 1 LẦN VÀO RAM
                     output = BytesIO()
+                    wb.save(output)
+                    excel_data = output.getvalue() # Lấy mảng byte an toàn
+                    
                     now = datetime.now()
                     filename_base = now.strftime("NGAN_DONG_%Y%m%d_%H%M")
                     excel_filename = f"{filename_base}.xlsx"
-                    wb.save(excel_filename)
-                    output.seek(0)
+                    
+                    # ✅ LƯU RA DISK TỪ MẢNG BYTE (Tránh gọi wb.save lần 2 gây lỗi)
+                    with open(excel_filename, "wb") as f:
+                        f.write(excel_data)
 
+                    # Tải file xuống
                     st.download_button(
                         label="📥 Tải file Excel (theo template)",
-                        data=output,
+                        data=excel_data,
                         file_name=excel_filename,
                         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                     )
