@@ -250,8 +250,8 @@ async def _capture_radar_async():
             # 🖱️ Focus vào map + scroll zoom IN thêm (theo gợi ý ChatGPT, cải tiến)
             # =====================
             box = await map_el.bounding_box()
-            cx = box["x"] + box["width"]  / 2 + 100
-            cy = box["y"] + box["height"] / 2 - 100
+            cx = box["x"] + box["width"]  / 2 - 100
+            cy = box["y"] + box["height"] / 2 + 100
 
             # Click vào giữa map để đảm bảo nhận sự kiện wheel
             await page.mouse.click(cx, cy)
