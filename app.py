@@ -552,12 +552,12 @@ if st.button("📍 Lấy xã trong tất cả vùng đã vẽ"):
                         st.info("ℹ️ Chưa có ảnh radar — nhấn **Chụp màn hình Radar** ở sidebar để thêm vào Excel.")
 
                     output = BytesIO()
+                    wb.save(output)
+                    output.seek(0)
                     now = datetime.now()
                     filename_base = now.strftime("NGAN_DONG_%Y%m%d_%H%M")
                     excel_filename = f"{filename_base}.xlsx"
                     wb.save(excel_filename)
-                    wb.save(output)
-                    output.seek(0)
 
                     st.download_button(
                         label="📥 Tải file Excel (theo template)",
