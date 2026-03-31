@@ -553,6 +553,7 @@ if st.button("📍 Lấy xã trong tất cả vùng đã vẽ"):
 
                     output = BytesIO()
                     wb.save(output)
+                    excel_data = output.getvalue()
                     output.seek(0)
                     now = datetime.now()
                     filename_base = now.strftime("NGAN_DONG_%Y%m%d_%H%M")
@@ -561,7 +562,7 @@ if st.button("📍 Lấy xã trong tất cả vùng đã vẽ"):
 
                     st.download_button(
                         label="📥 Tải file Excel (theo template)",
-                        data=output.getvalue(),
+                        data=excel_data,
                         file_name=excel_filename,
                         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                     )
