@@ -185,8 +185,8 @@ async def _capture_radar_async():
             # 3. Tọa độ CLICK (Dịch lên trên để focus đúng 19N - 20N)
             # cx: Giữa màn hình ngang
             # cy: Giữa màn hình dọc - 200 pixel (dịch lên trên ~1 độ vĩ độ)
-            cx = box["x"] + box["width"] / 2 - 100
-            cy = box["y"] + box["height"] / 2 - 150 
+            cx = box["x"] + box["width"] / 2 - 120
+            cy = box["y"] + box["height"] / 2 - 160 
 
             # Click để focus vào vùng Nghệ An - Thanh Hóa
             await page.mouse.click(cx, cy)
@@ -194,7 +194,7 @@ async def _capture_radar_async():
 
             # 4. ZOOM THỦ CÔNG (Cuộn chuột lên - Scroll Up)
             # Tăng SCROLL_TIMES nếu bạn muốn zoom sát hơn nữa
-            SCROLL_TIMES = 2  # Cuộn 2 nấc để từ toàn cảnh vào sát Nghệ An
+            SCROLL_TIMES = 3  # Cuộn 3 nấc để từ toàn cảnh vào sát Nghệ An
             for _ in range(SCROLL_TIMES):
                 await page.mouse.wheel(0, -500) # -500 là cuộn lên (Zoom In)
                 await page.wait_for_timeout(800) # Chờ một chút giữa các nấc zoom
