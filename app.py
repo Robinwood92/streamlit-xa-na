@@ -49,7 +49,7 @@ def get_vin_radar_urls():
     def fmt(dt):
         ymd = dt.strftime("%Y%m%d")
         ymdhm = dt.strftime("%Y%m%d%H%M")
-        dt_utc7 = dt + timedelta(hours=7)
+        dt_utc7 = dt
         display_time = dt_utc7.strftime("%H:%M")
         return ymd, ymdhm, display_time, dt
     
