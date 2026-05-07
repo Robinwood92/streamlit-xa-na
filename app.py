@@ -40,7 +40,7 @@ def get_vin_radar_urls():
     """Lấy 2 URL ảnh radar mới nhất từ trạm VIN"""
     base_url = "http://hymetnet.gov.vn/dataout_web/VIN"
     
-    t1 = datetime.now(timezone.utc) - timedelta(minutes=10)
+    t1 = datetime.now(timezone.utc)
     t1 = t1.replace(minute=(t1.minute // 10) * 10, second=0, microsecond=0)
     
     t0 = t1 - timedelta(minutes=10)
@@ -49,7 +49,8 @@ def get_vin_radar_urls():
     def fmt(dt):
         ymd = dt.strftime("%Y%m%d")
         ymdhm = dt.strftime("%Y%m%d%H%M")
-        dt_utc7 = dt
+        # Chuyển sang UTC+7 để hiển thị
+        dt_utc7 = dt + timedelta(hours=7)
         display_time = dt_utc7.strftime("%H:%M")
         return ymd, ymdhm, display_time, dt
     
@@ -58,12 +59,14 @@ def get_vin_radar_urls():
     
     url0 = f"{base_url}/{ymd0}/VIN_{ymdhm0}_CMAX00.png"
     url1 = f"{base_url}/{ymd1}/VIN_{ymdhm1}_CMAX00.png"
+    print (url0,"\n", url1)
     
     return [(ymdhm0, url0, display0, dt0), (ymdhm1, url1, display1, dt1)]
 
 # =====================
 # 🌧️ TẢI VÀ CHUYỂN ẢNH RADAR SANG BASE64
 # =====================
+@st.cache_data(ttl=600)  # Cache 10 phút
 def download_radar_as_base64(url):
     try:
         r = requests.get(url, timeout=10)
@@ -74,6 +77,7 @@ def download_radar_as_base64(url):
     except:
         return None
 
+@st.cache_data(ttl=600)  # Cache 10 phút
 def load_all_radars():
     urls = get_vin_radar_urls()
     loaded_radars = []
@@ -308,7 +312,8 @@ folium.GeoJson(
 # 🛰️ Thêm lớp Radar vào bản đồ
 # =====================
 if show_radar and loaded_radars:
-    center_lat, center_lon = (CROP_MIN_LAT + CROP_MAX_LAT) / 2 - 10, (CROP_MIN_LON + CROP_MAX_LON) / 2 + 10
+    # Tọa độ radar VIN (trung tâm: Vinh, Nghệ An)
+    center_lat, center_lon = 18.626, 105.65083
     radius_deg = 2.8
 
     bounds = [
